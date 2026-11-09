@@ -1,6 +1,11 @@
 package com.notebook.ai
 
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -58,6 +63,19 @@ class MainActivity : ComponentActivity() {
    var editId by remember { mutableStateOf<Long?>(null) }
    var search by remember { mutableStateOf("") }
    var deleteId by remember { mutableStateOf<Long?>(null) }
+   var scannedText by remember { mutableStateOf("") }
+   var scanError by remember { mutableStateOf("") }
+   var scanning by remember { mutableStateOf(false) }
+   val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+   val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+    if(bitmap == null) { scanError="Fotoğraf alınamadı veya işlem iptal edildi."; scanning=false }
+    else {
+     scanning=true
+     recognizer.process(InputImage.fromBitmap(bitmap,0))
+      .addOnSuccessListener { scannedText=it.text;scanError=if(it.text.isBlank()) "Okunabilir metin bulunamadı." else "";scanning=false }
+      .addOnFailureListener { scanError=it.localizedMessage ?: "Metin okuma başarısız.";scanning=false }
+    }
+   }
    fun persist(updated: List<Note>) {
     notes = updated
     val arr = JSONArray()
@@ -66,7 +84,7 @@ class MainActivity : ComponentActivity() {
    }
    MaterialTheme(colorScheme = darkColorScheme(primary=Purple, background=Navy, surface=Panel, onSurface=Ink)) {
     Scaffold(containerColor=Navy, bottomBar={
-     Row(Modifier.fillMaxWidth().background(Panel).padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
+     Row(Modifier.fillMaxWidth().background(Panel).navigationBarsPadding().padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
       listOf("Ana Sayfa" to "⌂","Notlar" to "▤","Hafızam" to "◈","Ayarlar" to "⚙").forEach { (name,symbol) ->
        Column(Modifier.weight(1f).clickable { page=name }.padding(4.dp), horizontalAlignment=Alignment.CenterHorizontally) {
         Text(symbol, color=if(page==name) Cyan else Color.LightGray, fontSize=23.sp)
@@ -147,13 +165,30 @@ class MainActivity : ComponentActivity() {
         }
         Text("Bu sürümde yerel metin araması çalışır; yapay zekâ sohbeti henüz eklenmedi.",color=Color.LightGray,modifier=Modifier.padding(top=16.dp))
        }
-       "Ekranı Tara","Kamerayla Tara","Harcamalar" -> {
+       "Kamerayla Tara" -> {
+        Text("Kağıt, fiş veya A4 belgesini okutun",color=Cyan,fontSize=18.sp)
+        Text("Kamera yalnızca siz başlattığınızda açılır. Metin kaydedilmeden önce düzenlenebilir.",color=Ink,modifier=Modifier.padding(vertical=12.dp))
+        Button(onClick={scanError="";cameraLauncher.launch(null)},modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
+        if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
+        if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
+        if(scannedText.isNotBlank()) {
+         Text("Tarama sonucu — kontrol edin",color=Cyan,modifier=Modifier.padding(top=16.dp))
+         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().heightIn(min=180.dp),label={Text("Okunan metin")})
+         Button(onClick={
+          val stamp=SimpleDateFormat("dd.MM.yyyy HH:mm",Locale("tr","TR")).format(Date())
+          persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText,stamp))+notes)
+          scannedText="";page="Hafızam"
+         },enabled=scannedText.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text("ONAYLA VE HAFIZAYA KAYDET") }
+         TextButton(onClick={scannedText=""}) { Text("Vazgeç") }
+        }
+       }
+       "Ekranı Tara","Harcamalar" -> {
         Text("Bu bölümün tasarımı hazır.",color=Cyan,fontSize=19.sp)
         Spacer(Modifier.height(12.dp))
         Text("Gerçek ${page.lowercase(Locale("tr","TR"))} işlevi henüz etkin değil. Sonraki APK güncellemesinde gerekli Android izinleri ve tarama altyapısı eklenecek.",color=Ink)
        }
        "Ayarlar" -> {
-        Text("NOTBOOK AI v0.8 • İlk arayüz sürümü",color=Cyan)
+        Text("NOTBOOK AI v0.9 • Kamera OCR testi",color=Cyan)
         Text("Notlar bu cihazda yerel olarak saklanır. Henüz şifrelenmez.",color=Ink,modifier=Modifier.padding(top=12.dp))
        }
       }
