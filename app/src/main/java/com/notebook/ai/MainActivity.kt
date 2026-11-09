@@ -1,6 +1,9 @@
 package com.notebook.ai
 
 import android.os.Bundle
+import android.net.Uri
+import java.io.File
+import androidx.core.content.FileProvider
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.common.InputImage
@@ -67,13 +70,22 @@ class MainActivity : ComponentActivity() {
    var scanError by remember { mutableStateOf("") }
    var scanning by remember { mutableStateOf(false) }
    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-   val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-    if(bitmap == null) { scanError="Fotoğraf alınamadı veya işlem iptal edildi."; scanning=false }
+   var photoUri by remember { mutableStateOf<Uri?>(null) }
+   val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+    val uri = photoUri
+    if(!success || uri==null) { scanError="Fotoğraf çekimi iptal edildi.";scanning=false }
     else {
      scanning=true
-     recognizer.process(InputImage.fromBitmap(bitmap,0))
-      .addOnSuccessListener { scannedText=it.text;scanError=if(it.text.isBlank()) "Okunabilir metin bulunamadı." else "";scanning=false }
-      .addOnFailureListener { scanError=it.localizedMessage ?: "Metin okuma başarısız.";scanning=false }
+     try {
+      val input = InputImage.fromFilePath(this@MainActivity, uri)
+      recognizer.process(input)
+       .addOnSuccessListener { result ->
+        scannedText=result.text
+        scanError=if(result.text.isBlank()) "Metin bulunamadı. Sayfayı daha yakın ve aydınlık çekin." else ""
+        scanning=false
+       }
+       .addOnFailureListener { e -> scanError=e.localizedMessage ?: "Okuma başarısız.";scanning=false }
+     } catch(e:Exception) { scanError=e.localizedMessage ?: "Fotoğraf açılamadı.";scanning=false }
     }
    }
    fun persist(updated: List<Note>) {
@@ -168,7 +180,15 @@ class MainActivity : ComponentActivity() {
        "Kamerayla Tara" -> {
         Text("Kağıt, fiş veya A4 belgesini okutun",color=Cyan,fontSize=18.sp)
         Text("Kamera yalnızca siz başlattığınızda açılır. Metin kaydedilmeden önce düzenlenebilir.",color=Ink,modifier=Modifier.padding(vertical=12.dp))
-        Button(onClick={scanError="";cameraLauncher.launch(null)},modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
+        Button(onClick={
+         scanError=""
+         try {
+          val dir=File(cacheDir,"captures").apply { mkdirs() }
+          val file=File.createTempFile("scan_",".jpg",dir)
+          photoUri=FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider",file)
+          cameraLauncher.launch(photoUri!!)
+         } catch(e:Exception) { scanError=e.localizedMessage ?: "Kamera açılamadı." }
+        },modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
         if(scannedText.isNotBlank()) {
@@ -188,7 +208,7 @@ class MainActivity : ComponentActivity() {
         Text("Gerçek ${page.lowercase(Locale("tr","TR"))} işlevi henüz etkin değil. Sonraki APK güncellemesinde gerekli Android izinleri ve tarama altyapısı eklenecek.",color=Ink)
        }
        "Ayarlar" -> {
-        Text("NOTBOOK AI v0.9 • Kamera OCR testi",color=Cyan)
+        Text("NOTBOOK AI v0.10 • Tam çözünürlüklü OCR",color=Cyan)
         Text("Notlar bu cihazda yerel olarak saklanır. Henüz şifrelenmez.",color=Ink,modifier=Modifier.padding(top=12.dp))
        }
       }
