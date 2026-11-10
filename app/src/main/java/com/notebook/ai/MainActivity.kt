@@ -171,6 +171,27 @@ class MainActivity : ComponentActivity() {
      } catch(e:Exception) { scanError=e.localizedMessage ?: "Fotoğraf açılamadı.";scanning=false }
     }
    }
+   val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    if (uri != null) {
+     scanning = true
+     scanError = ""
+     try {
+      recognizer.process(InputImage.fromFilePath(this@MainActivity, uri))
+       .addOnSuccessListener { result ->
+        scannedText = result.text.trim()
+        scanError = if (scannedText.isBlank()) "Gorselde okunabilir metin bulunamadi." else documentWarnings(scannedText)
+        scanning = false
+       }
+       .addOnFailureListener { error ->
+        scanError = error.localizedMessage ?: "Galeri taramasi basarisiz."
+        scanning = false
+       }
+     } catch (error: Exception) {
+      scanError = error.localizedMessage ?: "Resim acilamadi."
+      scanning = false
+     }
+    }
+   }
    fun persist(updated: List<Note>) {
     notes = updated
     val arr = JSONArray()
@@ -290,6 +311,7 @@ class MainActivity : ComponentActivity() {
           cameraLauncher.launch(photoUri!!)
          } catch(e:Exception) { scanError=e.localizedMessage ?: "Kamera açılamadı." }
         },modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
+        OutlinedButton(onClick={ galleryLauncher.launch("image/*") }, modifier=Modifier.fillMaxWidth()) { Text("GALERIDEN RESIM TARA") }
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
         if(scannedText.isNotBlank()) {
