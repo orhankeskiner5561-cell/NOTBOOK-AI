@@ -1,6 +1,12 @@
 package com.notebook.ai
 
 import android.os.Bundle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import java.net.HttpURLConnection
+import java.net.URL
 import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -95,6 +101,23 @@ private fun documentWarnings(text: String): String {
  return if (missing.isEmpty()) "" else "Dikkat: ${missing.joinToString(", ")} rakamları güvenilir biçimde okunamadı. Kaydetmeden önce fotoğrafla karşılaştırın."
 }
 
+private suspend fun askGeminiProxy(endpoint: String, question: String, notes: List<Note>): String = withContext(Dispatchers.IO) {
+ val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+  requestMethod = "POST"; connectTimeout = 15000; readTimeout = 45000
+  doOutput = true; setRequestProperty("Content-Type", "application/json")
+ }
+ try {
+  val payload = JSONObject().put("question", question).put("notes", JSONArray().apply {
+   notes.take(30).forEach { put(JSONObject().put("title",it.title).put("body",it.body)) }
+  })
+  connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+  val code = connection.responseCode
+  if(code !in 200..299) throw IllegalStateException("Sunucu hatası: HTTP $code")
+  val result = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+  result.optString("answer").ifBlank { "Sunucu boş yanıt verdi." }
+ } finally { connection.disconnect() }
+}
+
 data class Note(val id: Long, val title: String, val body: String, val timestamp: String)
 
 class MainActivity : ComponentActivity() {
@@ -115,6 +138,11 @@ class MainActivity : ComponentActivity() {
   }
   setContent {
    var page by remember { mutableStateOf("Ana Sayfa") }
+   val scope = rememberCoroutineScope()
+   var proxyUrl by remember { mutableStateOf(prefs.getString("gemini_proxy_url", "") ?: "") }
+   var question by remember { mutableStateOf("") }
+   var aiAnswer by remember { mutableStateOf("") }
+   var aiLoading by remember { mutableStateOf(false) }
    var notes by remember { mutableStateOf(load()) }
    var title by remember { mutableStateOf("") }
    var body by remember { mutableStateOf("") }
@@ -268,6 +296,65 @@ class MainActivity : ComponentActivity() {
          }
         }
         Text("Bu sürümde yerel metin araması çalışır; yapay zekâ sohbeti henüz eklenmedi.",color=Color.LightGray,modifier=Modifier.padding(top=16.dp))
+       }
+       "Kamerayla Tara" -> {
+        Text("Kağıt, fiş veya A4 belgesini okutun",color=Cyan,fontSize=18.sp)
+        Text("Kamera yalnızca siz başlattığınızda açılır. Metin kaydedilmeden önce düzenlenebilir.",color=Ink,modifier=Modifier.padding(vertical=12.dp))
+        Button(onClick={
+         scanError=""
+         try {
+          val dir=File(cacheDir,"captures").apply { mkdirs() }
+          val file=File.createTempFile("scan_",".jpg",dir)
+          photoUri=FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider",file)
+          cameraLauncher.launch(photoUri!!)
+         } catch(e:Exception) { scanError=e.localizedMessage ?: "Kamera açılamadı." }
+        },modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
+        if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
+        if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
+        if(scannedText.isNotBlank()) {
+         Text("Tarama sonucu — tarih, saat ve tartım rakamlarını kontrol edin",color=Cyan,modifier=Modifier.padding(top=16.dp))
+         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().height(260.dp),label={Text("Okunan metin")})
+         TextButton(onClick={scannedText=""}) { Text("Vazgeç") }
+        }
+       }
+       "Ekranı Tara","Harcamalar" -> {
+        Text("Bu bölümün tasarımı hazır.",color=Cyan,fontSize=19.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("Gerçek ${page.lowercase(Locale("tr","TR"))} işlevi henüz etkin değil. Sonraki APK güncellemesinde gerekli Android izinleri ve tarama altyapısı eklenecek.",color=Ink)
+       }
+       "Ayarlar" -> {
+        Text("NOTBOOK AI • Gemini test bağlantısı",color=Cyan)
+        OutlinedTextField(proxyUrl,{proxyUrl=it},label={Text("Güvenli Gemini sunucu adresi (HTTPS)")},modifier=Modifier.fillMaxWidth())
+        Button(onClick={prefs.edit().putString("gemini_proxy_url",proxyUrl.trim()).apply()}) { Text("BAĞLANTI ADRESİNİ KAYDET") }
+        Text("API anahtarını buraya girmeyin. Sunucu anahtarı gizli tutmalıdır.",color=Color(0xFFFFB5A8))
+        Text("Notlar bu cihazda yerel olarak saklanır. Henüz şifrelenmez.",color=Ink,modifier=Modifier.padding(top=12.dp))
+       }
+      }
+      Spacer(Modifier.height(24.dp))
+     }
+     if(deleteId!=null) AlertDialog(onDismissRequest={deleteId=null},title={Text("Not silinsin mi?")},text={Text("Bu işlem geri alınamaz.")},confirmButton={
+      TextButton(onClick={persist(notes.filterNot { it.id==deleteId });deleteId=null}) { Text("Sil") }
+     },dismissButton={TextButton(onClick={deleteId=null}){Text("Vazgeç")}})
+    }
+   }
+  }
+ }
+}       "AI'ya Sor" -> {
+        Text("Gemini ile soru-cevap",color=Cyan)
+        Text("Genel sorular sorun veya kayıtlı notlarınızdan bilgi isteyin.",color=Ink)
+        OutlinedTextField(question,{question=it},label={Text("Sorunuzu yazın")},modifier=Modifier.fillMaxWidth().padding(top=12.dp))
+        Button(onClick={
+         aiLoading=true;aiAnswer=""
+         scope.launch {
+          try {
+           aiAnswer=askGeminiProxy(proxyUrl,question,notes)
+          } catch(e:Exception) { aiAnswer="Bağlantı kurulamadı: ${e.localizedMessage ?: "Bilinmeyen hata"}" }
+          aiLoading=false
+         }
+        },enabled=question.isNotBlank() && proxyUrl.startsWith("https://") && !aiLoading,
+          modifier=Modifier.fillMaxWidth().padding(top=10.dp)) { Text(if(aiLoading) "YANIT BEKLENİYOR" else "GEMINI'YE SOR") }
+        if(proxyUrl.isBlank()) Text("Önce Ayarlar bölümünden güvenli Gemini sunucu adresini girin.",color=Color(0xFFFFB5A8))
+        if(aiAnswer.isNotBlank()) Text(aiAnswer,color=Ink,modifier=Modifier.padding(top=16.dp))
        }
        "Kamerayla Tara" -> {
         Text("Kağıt, fiş veya A4 belgesini okutun",color=Cyan,fontSize=18.sp)
