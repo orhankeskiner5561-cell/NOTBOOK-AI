@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
    var editId by remember { mutableStateOf<Long?>(null) }
    var search by remember { mutableStateOf("") }
    var deleteId by remember { mutableStateOf<Long?>(null) }
+   var selectedExportIds by remember { mutableStateOf(setOf<Long>()) }
    var scannedText by remember { mutableStateOf("") }
    var scanError by remember { mutableStateOf("") }
    var scanning by remember { mutableStateOf(false) }
@@ -287,13 +288,28 @@ class MainActivity : ComponentActivity() {
         Text("Belge ve ekran tarama kayıtları sonraki güncellemede eklenecek.",color=Ink,modifier=Modifier.padding(top=16.dp))
        }
        "Paylaş" -> {
+        val exportNotes = if (selectedExportIds.isEmpty()) notes else notes.filter { it.id in selectedExportIds }
         Text("Kayitlari paylas ve yazdir", color=Cyan, fontSize=19.sp)
+        Text("Secim yapmazsaniz tum kayitlar aktarilir. Aktarilacak: ${exportNotes.size}", color=Ink)
+        Row {
+         TextButton(onClick={ selectedExportIds = notes.map { it.id }.toSet() }) { Text("Tumunu sec") }
+         TextButton(onClick={ selectedExportIds = emptySet() }) { Text("Secimi temizle") }
+        }
+        notes.forEach { n ->
+         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+          Checkbox(checked=n.id in selectedExportIds, onCheckedChange={ checked ->
+           selectedExportIds = if(checked) selectedExportIds + n.id else selectedExportIds - n.id
+          })
+          Column(Modifier.weight(1f)) {
+           Text(n.title, color=Ink, maxLines=1)
+           Text(n.timestamp, color=Cyan, fontSize=11.sp)
+          }
+         }
+        }
         Spacer(Modifier.height(12.dp))
-        Text("Toplam ${notes.size} kayit. PDF A4 olarak hazirlanir.", color=Ink)
-        Spacer(Modifier.height(12.dp))
-        Button(onClick={ NoteExport.sharePdf(this@MainActivity, notes) }, enabled=notes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("PDF PAYLAS") }
-        Button(onClick={ NoteExport.print(this@MainActivity, notes) }, enabled=notes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("YAZDIR / A4") }
-        OutlinedButton(onClick={ NoteExport.shareText(this@MainActivity, notes) }, enabled=notes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("METIN OLARAK PAYLAS") }
+        Button(onClick={ NoteExport.sharePdf(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("PDF PAYLAS") }
+        Button(onClick={ NoteExport.print(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("YAZDIR / A4") }
+        OutlinedButton(onClick={ NoteExport.shareText(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("METIN OLARAK PAYLAS") }
        }
        "AI'ya Sor" -> {
         Text("Akıllı hafızada arama",color=Cyan)
