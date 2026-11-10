@@ -188,7 +188,7 @@ class MainActivity : ComponentActivity() {
        },modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=6.dp)) { Text("ONAYLA VE HAFIZAYA KAYDET") }
       }
      Row(Modifier.fillMaxWidth().background(Panel).navigationBarsPadding().padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
-      listOf("Ana Sayfa" to "⌂","Notlar" to "▤","Hafızam" to "◈","Ayarlar" to "⚙").forEach { (name,symbol) ->
+      listOf("Ana Sayfa" to "⌂","Notlar" to "▤","Hafızam" to "◈","Paylaş" to "⇧","Ayarlar" to "⚙").forEach { (name,symbol) ->
        Column(Modifier.weight(1f).clickable { page=name }.padding(4.dp), horizontalAlignment=Alignment.CenterHorizontally) {
         Text(symbol, color=if(page==name) Cyan else Color.LightGray, fontSize=23.sp)
         Text(name, color=if(page==name) Cyan else Color.LightGray, fontSize=10.sp)
@@ -258,6 +258,15 @@ class MainActivity : ComponentActivity() {
         Spacer(Modifier.height(12.dp))
         Button(onClick={page="Not Defterim"}) { Text("Notları aç") }
         Text("Belge ve ekran tarama kayıtları sonraki güncellemede eklenecek.",color=Ink,modifier=Modifier.padding(top=16.dp))
+       }
+       "Paylaş" -> {
+        Text("Kayitlari paylas ve yazdir", color=Cyan, fontSize=19.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("Toplam ${notes.size} kayit. PDF A4 olarak hazirlanir.", color=Ink)
+        Spacer(Modifier.height(12.dp))
+        Button(onClick={ NoteExport.sharePdf(this@MainActivity, notes) }, enabled=notes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("PDF PAYLAS") }
+        Button(onClick={ NoteExport.print(this@MainActivity, notes) }, enabled=notes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("YAZDIR / A4") }
+        OutlinedButton(onClick={ NoteExport.shareText(this@MainActivity, notes) }, enabled=notes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("METIN OLARAK PAYLAS") }
        }
        "AI'ya Sor" -> {
         Text("Akıllı hafızada arama",color=Cyan)
