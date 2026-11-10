@@ -253,11 +253,11 @@ class MainActivity : ComponentActivity() {
    MaterialTheme(colorScheme = darkColorScheme(primary=Purple, background=Navy, surface=Panel, onSurface=Ink)) {
     Scaffold(containerColor=Navy, bottomBar={
      Column {
-      if(page=="Kamerayla Tara" && scannedText.isNotBlank()) {
+      if(page=="Kamerayla Tara" && !liveScanning && scannedText.isNotBlank()) {
        Button(onClick={
         val stamp=SimpleDateFormat("dd.MM.yyyy HH:mm",Locale("tr","TR")).format(Date())
         persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText,stamp))+notes)
-        scannedText="";page="Hafızam"
+        scannedText="";liveScanning=false;page="Hafızam"
        },modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=6.dp)) { Text("ONAYLA VE HAFIZAYA KAYDET") }
       }
      Row(Modifier.fillMaxWidth().background(Panel).navigationBarsPadding().padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
@@ -364,13 +364,13 @@ class MainActivity : ComponentActivity() {
         Text("Kamera yalnızca siz başlattığınızda açılır. Metin kaydedilmeden önce düzenlenebilir.",color=Ink,modifier=Modifier.padding(vertical=12.dp))
         Button(onClick={
          if (liveScanning) liveScanning = false
-         else if (cameraGranted) { scanError = ""; liveScanning = true }
+         else if (cameraGranted) { scanError = ""; scannedText = ""; liveScanning = true }
          else permissionLauncher.launch(Manifest.permission.CAMERA)
         },modifier=Modifier.fillMaxWidth()) { Text(if(liveScanning) "CANLI TARAMAYI DURDUR" else "CANLI KAMERAYLA TARA") }
         if (liveScanning && cameraGranted) {
          val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(this@MainActivity) }
          val busy = remember { AtomicBoolean(false) }
-         val previewView = remember { PreviewView(this@MainActivity) }
+         val previewView = remember { PreviewView(this@MainActivity).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FIT_CENTER } }
          DisposableEffect(cameraProviderFuture) {
           val listener = Runnable {
            try {
@@ -384,7 +384,7 @@ class MainActivity : ComponentActivity() {
               val image = InputImage.fromMediaImage(media,frame.imageInfo.rotationDegrees)
               recognizer.process(image)
                .addOnSuccessListener { result ->
-                if (result.text.isNotBlank()) {
+                if (result.text.isNotBlank() && liveScanning) {
                  scannedText = result.text.trim()
                  scanError = documentWarnings(scannedText)
                 }
@@ -404,12 +404,13 @@ class MainActivity : ComponentActivity() {
            }
           }
          }
-         AndroidView(factory={ previewView },modifier=Modifier.fillMaxWidth().height(220.dp))
-         Text("Canlı okuma açık. Metin aşağıda anında görünür; bitirince taramayı durdurun.",color=Cyan)
+         AndroidView(factory={ previewView },modifier=Modifier.fillMaxWidth().height(250.dp).border(1.dp,Cyan,RoundedCornerShape(12.dp)))
+         Text("Canlı tarama açık • Yazıları çerçeveye yaklaştırın. Bitince taramayı durdurun.",color=Cyan)
         }
+        if(liveScanning && scannedText.isBlank()) Text("Yazı aranıyor…",color=Cyan)
         if(scannedText.isNotBlank()) {
          Text("OKUNAN METİN",color=Cyan,modifier=Modifier.padding(top=10.dp))
-         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().height(155.dp),label={Text("Düzenlenebilir sonuç")})
+         OutlinedTextField(scannedText,{scannedText=it},readOnly=liveScanning,modifier=Modifier.fillMaxWidth().height(190.dp),label={Text(if(liveScanning) "Canlı sonuç • düzenlemek için durdurun" else "Düzenlenebilir sonuç")})
         }
         Spacer(Modifier.height(10.dp))
         Button(onClick={
@@ -429,7 +430,7 @@ class MainActivity : ComponentActivity() {
         },modifier=Modifier.fillMaxWidth()) { Text("GALERİDEN RESİM TARA") }
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
-        if(scannedText.isNotBlank()) TextButton(onClick={scannedText=""}) { Text("Metni temizle") }
+        if(scannedText.isNotBlank() && !liveScanning) TextButton(onClick={scannedText=""}) { Text("Metni temizle") }
        }
        "Ekranı Tara","Harcamalar" -> {
         Text("Bu bölümün tasarımı hazır.",color=Cyan,fontSize=19.sp)
