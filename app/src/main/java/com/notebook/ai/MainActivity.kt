@@ -46,26 +46,38 @@ private val Cyan = Color(0xFF39D5E5)
 private val Ink = Color.White
 private val Gradient = Brush.horizontalGradient(listOf(Color(0xFF076B83), Color(0xFF5427A0)))
 
-private fun enhanceDocument(source: Bitmap): Bitmap {
- val scale = minOf(2.0f, 2400f / maxOf(source.width, source.height).toFloat())
- val width = (source.width * scale).toInt().coerceAtLeast(1)
- val height = (source.height * scale).toInt().coerceAtLeast(1)
+private fun enhanceDocument(source: Bitmap, bounds: android.graphics.Rect?): Bitmap {
+ val crop = bounds?.let {
+  val marginX = (it.width() * 0.12f).toInt().coerceAtLeast(25)
+  val marginY = (it.height() * 0.20f).toInt().coerceAtLeast(25)
+  android.graphics.Rect(
+   (it.left - marginX).coerceAtLeast(0), (it.top - marginY).coerceAtLeast(0),
+   (it.right + marginX).coerceAtMost(source.width),
+   (it.bottom + marginY).coerceAtMost(source.height))
+ } ?: android.graphics.Rect(0, 0, source.width, source.height)
+ val scale = minOf(3f, 2800f / maxOf(crop.width(), crop.height()).toFloat())
+ val width = (crop.width() * scale).toInt().coerceAtLeast(1)
+ val height = (crop.height() * scale).toInt().coerceAtLeast(1)
  val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
  val matrix = ColorMatrix().apply { setSaturation(0f) }
- val contrast = 1.65f
- val offset = -75f
- val contrastMatrix = ColorMatrix(floatArrayOf(
-  contrast,0f,0f,0f,offset,
-  0f,contrast,0f,0f,offset,
-  0f,0f,contrast,0f,offset,
-  0f,0f,0f,1f,0f
- ))
- matrix.postConcat(contrastMatrix)
+ val contrast = 1.35f
+ val offset = -35f
+ matrix.postConcat(ColorMatrix(floatArrayOf(
+  contrast,0f,0f,0f,offset, 0f,contrast,0f,0f,offset,
+  0f,0f,contrast,0f,offset, 0f,0f,0f,1f,0f)))
  val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
   colorFilter = ColorMatrixColorFilter(matrix)
  }
- Canvas(output).drawBitmap(source, null, android.graphics.Rect(0,0,width,height), paint)
+ Canvas(output).drawBitmap(source, crop, android.graphics.Rect(0,0,width,height), paint)
  return output
+}
+
+private fun ocrScore(text: String): Int {
+ val lines = text.lines().count { it.trim().length >= 3 }
+ val numbers = Regex("\\d{1,2}[:/.]\\d{2}|\\d{3,6}").findAll(text).count()
+ val fields = listOf("TARTIM", "NET", "GİRİŞ", "ÇIKIŞ", "PLAKA", "FİRMA", "ŞOFÖR")
+  .count { text.uppercase(Locale("tr", "TR")).contains(it) }
+ return lines + numbers * 3 + fields * 2
 }
 
 data class Note(val id: Long, val title: String, val body: String, val timestamp: String)
@@ -113,16 +125,17 @@ class MainActivity : ComponentActivity() {
          val decoded = ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, _, _ ->
           decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
          }
-         val enhanced = enhanceDocument(decoded)
+         val boxes = first.textBlocks.mapNotNull { it.boundingBox }
+         val union = if(boxes.isNotEmpty()) android.graphics.Rect(boxes.first()).apply {
+          boxes.drop(1).forEach { union(it) }
+         } else null
+         val enhanced = enhanceDocument(decoded, union)
          recognizer.process(InputImage.fromBitmap(enhanced, 0))
           .addOnSuccessListener { second ->
            val enhancedText = second.text.trim()
            // Never silently replace the original OCR result with guessed numeric values.
-           scannedText = when {
-            originalText.isBlank() -> enhancedText
-            enhancedText.isBlank() || enhancedText == originalText -> originalText
-            else -> originalText + "\\n\\n--- KONTRASTLI İKİNCİ OKUMA (KONTROL EDİN) ---\\n" + enhancedText
-           }
+           // Show one result only. Never concatenate OCR passes or invent digits.
+           scannedText = if(ocrScore(enhancedText) > ocrScore(originalText)) enhancedText else originalText
            scanError = if(scannedText.isBlank()) "Metin bulunamadı. Belgeyi yakından ve aydınlıkta çekin." else ""
            scanning = false
            enhanced.recycle()
@@ -267,7 +280,7 @@ class MainActivity : ComponentActivity() {
         Text("Gerçek ${page.lowercase(Locale("tr","TR"))} işlevi henüz etkin değil. Sonraki APK güncellemesinde gerekli Android izinleri ve tarama altyapısı eklenecek.",color=Ink)
        }
        "Ayarlar" -> {
-        Text("NOTBOOK AI v0.10 • Tam çözünürlüklü OCR",color=Cyan)
+        Text("NOTBOOK AI v0.11 • Belge odaklı OCR",color=Cyan)
         Text("Notlar bu cihazda yerel olarak saklanır. Henüz şifrelenmez.",color=Ink,modifier=Modifier.padding(top=12.dp))
        }
       }
