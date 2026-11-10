@@ -96,6 +96,14 @@ class MainActivity : ComponentActivity() {
    }
    MaterialTheme(colorScheme = darkColorScheme(primary=Purple, background=Navy, surface=Panel, onSurface=Ink)) {
     Scaffold(containerColor=Navy, bottomBar={
+     Column {
+      if(page=="Kamerayla Tara" && scannedText.isNotBlank()) {
+       Button(onClick={
+        val stamp=SimpleDateFormat("dd.MM.yyyy HH:mm",Locale("tr","TR")).format(Date())
+        persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText,stamp))+notes)
+        scannedText="";page="Hafızam"
+       },modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=6.dp)) { Text("ONAYLA VE HAFIZAYA KAYDET") }
+      }
      Row(Modifier.fillMaxWidth().background(Panel).navigationBarsPadding().padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
       listOf("Ana Sayfa" to "⌂","Notlar" to "▤","Hafızam" to "◈","Ayarlar" to "⚙").forEach { (name,symbol) ->
        Column(Modifier.weight(1f).clickable { page=name }.padding(4.dp), horizontalAlignment=Alignment.CenterHorizontally) {
@@ -103,6 +111,7 @@ class MainActivity : ComponentActivity() {
         Text(name, color=if(page==name) Cyan else Color.LightGray, fontSize=10.sp)
        }
       }
+     }
      }
     }) { inner ->
      Column(Modifier.fillMaxSize().padding(inner).verticalScroll(rememberScrollState()).padding(horizontal=16.dp)) {
@@ -192,13 +201,8 @@ class MainActivity : ComponentActivity() {
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
         if(scannedText.isNotBlank()) {
-         Text("Tarama sonucu — kontrol edin",color=Cyan,modifier=Modifier.padding(top=16.dp))
-         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().heightIn(min=180.dp),label={Text("Okunan metin")})
-         Button(onClick={
-          val stamp=SimpleDateFormat("dd.MM.yyyy HH:mm",Locale("tr","TR")).format(Date())
-          persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText,stamp))+notes)
-          scannedText="";page="Hafızam"
-         },enabled=scannedText.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text("ONAYLA VE HAFIZAYA KAYDET") }
+         Text("Tarama sonucu — tarih, saat ve tartım rakamlarını kontrol edin",color=Cyan,modifier=Modifier.padding(top=16.dp))
+         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().height(260.dp),label={Text("Okunan metin")})
          TextButton(onClick={scannedText=""}) { Text("Vazgeç") }
         }
        }
