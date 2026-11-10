@@ -6,7 +6,7 @@ plugins {
 android {
  namespace = "com.notebook.ai"
  compileSdk = 35
- defaultConfig { applicationId = "com.notebook.ai"; minSdk = 26; targetSdk = 35; versionCode = 7; versionName = "0.7.0" }
+ defaultConfig { applicationId = "com.notebook.ai"; minSdk = 26; targetSdk = 35; versionCode = 8; versionName = "0.8.0" }
  buildFeatures { compose = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
