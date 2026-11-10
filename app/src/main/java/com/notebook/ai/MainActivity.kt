@@ -309,6 +309,7 @@ class MainActivity : ComponentActivity() {
         Spacer(Modifier.height(12.dp))
         Button(onClick={ NoteExport.sharePdf(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("PDF PAYLAS") }
         Button(onClick={ NoteExport.print(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("YAZDIR / A4") }
+        OutlinedButton(onClick={ NoteExport.shareCsv(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("CSV / EXCEL PAYLAS") }
         OutlinedButton(onClick={ NoteExport.shareText(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("METIN OLARAK PAYLAS") }
        }
        "AI'ya Sor" -> {
