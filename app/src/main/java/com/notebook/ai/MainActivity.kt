@@ -80,6 +80,21 @@ private fun ocrScore(text: String): Int {
  return lines + numbers * 3 + fields * 2
 }
 
+private fun documentWarnings(text: String): String {
+ val normalized = text.uppercase(Locale("tr", "TR"))
+ val missing = mutableListOf<String>()
+ if (normalized.contains("TARTIM") || normalized.contains("TARTI")) {
+  val lines = text.lines()
+  listOf("TARTIM1", "TARTIM2", "NET").forEach { field ->
+   val line = lines.firstOrNull {
+    it.uppercase(Locale("tr", "TR")).replace(" ", "").contains(field)
+   }
+   if (line == null || !Regex("\\d{3,6}").containsMatchIn(line)) missing.add(field)
+  }
+ }
+ return if (missing.isEmpty()) "" else "Dikkat: ${missing.joinToString(", ")} rakamları güvenilir biçimde okunamadı. Kaydetmeden önce fotoğrafla karşılaştırın."
+}
+
 data class Note(val id: Long, val title: String, val body: String, val timestamp: String)
 
 class MainActivity : ComponentActivity() {
@@ -136,7 +151,7 @@ class MainActivity : ComponentActivity() {
            // Never silently replace the original OCR result with guessed numeric values.
            // Show one result only. Never concatenate OCR passes or invent digits.
            scannedText = if(ocrScore(enhancedText) > ocrScore(originalText)) enhancedText else originalText
-           scanError = if(scannedText.isBlank()) "Metin bulunamadı. Belgeyi yakından ve aydınlıkta çekin." else ""
+           scanError = if(scannedText.isBlank()) "Metin bulunamadı. Belgeyi yakından ve aydınlıkta çekin." else documentWarnings(scannedText)
            scanning = false
            enhanced.recycle()
           }
@@ -280,7 +295,7 @@ class MainActivity : ComponentActivity() {
         Text("Gerçek ${page.lowercase(Locale("tr","TR"))} işlevi henüz etkin değil. Sonraki APK güncellemesinde gerekli Android izinleri ve tarama altyapısı eklenecek.",color=Ink)
        }
        "Ayarlar" -> {
-        Text("NOTBOOK AI v0.11 • Belge odaklı OCR",color=Cyan)
+        Text("NOTBOOK AI v0.12 • OCR doğrulama uyarıları",color=Cyan)
         Text("Notlar bu cihazda yerel olarak saklanır. Henüz şifrelenmez.",color=Ink,modifier=Modifier.padding(top=12.dp))
        }
       }
