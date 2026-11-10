@@ -256,7 +256,10 @@ class MainActivity : ComponentActivity() {
       if(page=="Kamerayla Tara" && !liveScanning && scannedText.isNotBlank()) {
        Button(onClick={
         val stamp=SimpleDateFormat("dd.MM.yyyy HH:mm",Locale("tr","TR")).format(Date())
-        persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText,stamp))+notes)
+        val normalized = scannedText.trim().replace(Regex("\\s+"), " ").lowercase(Locale("tr", "TR"))
+        val exists = notes.any { it.body.trim().replace(Regex("\\s+"), " ").lowercase(Locale("tr", "TR")) == normalized }
+        if (!exists) persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText.trim(),stamp))+notes)
+        else scanError = "Bu metin daha önce kaydedilmiş; tekrar eklenmedi."
         scannedText="";liveScanning=false;page="Hafızam"
        },modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=6.dp)) { Text("ONAYLA VE HAFIZAYA KAYDET") }
       }
@@ -331,16 +334,6 @@ class MainActivity : ComponentActivity() {
         Spacer(Modifier.height(12.dp))
         Button(onClick={page="Not Defterim"}) { Text("Notları aç") }
         Text("Belge ve ekran tarama kayıtları sonraki güncellemede eklenecek.",color=Ink,modifier=Modifier.padding(top=16.dp))
-       }
-       "AI'ya Sor" -> {
-        Text("Akıllı hafızada arama",color=Cyan)
-        OutlinedTextField(search,{search=it},label={Text("Notlarınızda ne arıyorsunuz?")},modifier=Modifier.fillMaxWidth())
-        notes.filter { search.isNotBlank() && (it.title.contains(search,true)||it.body.contains(search,true)) }.forEach { n ->
-         Card(Modifier.fillMaxWidth().padding(top=10.dp).clickable { page="Not Defterim";title=n.title;body=n.body;editId=n.id }) {
-          Column(Modifier.padding(12.dp)) { Text(n.title);Text(n.body,maxLines=3) }
-         }
-        }
-        Text("Bu sürümde yerel metin araması çalışır; yapay zekâ sohbeti henüz eklenmedi.",color=Color.LightGray,modifier=Modifier.padding(top=16.dp))
        }
        "AI'ya Sor" -> {
         Text("Gemini ile soru-cevap",color=Cyan)
