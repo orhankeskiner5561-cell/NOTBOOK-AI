@@ -204,8 +204,14 @@ class MainActivity : ComponentActivity() {
       if(page=="Kamerayla Tara" && scannedText.isNotBlank()) {
        Button(onClick={
         val stamp=SimpleDateFormat("dd.MM.yyyy HH:mm",Locale("tr","TR")).format(Date())
-        persist(listOf(Note(System.currentTimeMillis(),"Kamera taraması",scannedText,stamp))+notes)
-        scannedText="";page="Hafızam"
+        val normalized = scannedText.trim().replace(Regex("\\s+"), " ").lowercase(Locale("tr","TR"))
+        val exists = notes.any { it.body.trim().replace(Regex("\\s+"), " ").lowercase(Locale("tr","TR")) == normalized }
+        if (exists) {
+         scanError = "Bu belge daha once hafizaya kaydedilmis. Tekrar eklenmedi."
+        } else {
+         persist(listOf(Note(System.currentTimeMillis(),"Belge taramasi",scannedText,stamp))+notes)
+         scannedText="";page="Hafızam"
+        }
        },modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=6.dp)) { Text("ONAYLA VE HAFIZAYA KAYDET") }
       }
      Row(Modifier.fillMaxWidth().background(Panel).navigationBarsPadding().padding(vertical=8.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
