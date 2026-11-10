@@ -1,6 +1,17 @@
 package com.notebook.ai
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.DisposableEffect
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.rememberCoroutineScope
@@ -152,6 +163,12 @@ class MainActivity : ComponentActivity() {
    var scannedText by remember { mutableStateOf("") }
    var scanError by remember { mutableStateOf("") }
    var scanning by remember { mutableStateOf(false) }
+   var liveScanning by remember { mutableStateOf(false) }
+   var cameraGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+   val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    cameraGranted = granted
+    if (granted) liveScanning = true else scanError = "Canlı tarama için kamera izni gerekli."
+   }
    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
    var photoUri by remember { mutableStateOf<Uri?>(null) }
    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -341,6 +358,52 @@ class MainActivity : ComponentActivity() {
        "Kamerayla Tara" -> {
         Text("Kağıt, fiş veya A4 belgesini okutun",color=Cyan,fontSize=18.sp)
         Text("Kamera yalnızca siz başlattığınızda açılır. Metin kaydedilmeden önce düzenlenebilir.",color=Ink,modifier=Modifier.padding(vertical=12.dp))
+        Button(onClick={
+         if (liveScanning) liveScanning = false
+         else if (cameraGranted) { scanError = ""; liveScanning = true }
+         else permissionLauncher.launch(Manifest.permission.CAMERA)
+        },modifier=Modifier.fillMaxWidth()) { Text(if(liveScanning) "CANLI TARAMAYI DURDUR" else "CANLI KAMERAYLA TARA") }
+        if (liveScanning && cameraGranted) {
+         val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(this@MainActivity) }
+         val busy = remember { AtomicBoolean(false) }
+         val previewView = remember { PreviewView(this@MainActivity) }
+         DisposableEffect(cameraProviderFuture) {
+          val listener = Runnable {
+           try {
+            val provider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
+            val analyzer = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+            analyzer.setAnalyzer(ContextCompat.getMainExecutor(this@MainActivity)) { frame ->
+             val media = frame.image
+             if (media == null || !busy.compareAndSet(false,true)) { frame.close() }
+             else {
+              val image = InputImage.fromMediaImage(media,frame.imageInfo.rotationDegrees)
+              recognizer.process(image)
+               .addOnSuccessListener { result ->
+                if (result.text.isNotBlank()) {
+                 scannedText = result.text.trim()
+                 scanError = documentWarnings(scannedText)
+                }
+               }
+               .addOnFailureListener { e -> scanError = e.localizedMessage ?: "Canlı okuma hatası" }
+               .addOnCompleteListener { busy.set(false);frame.close() }
+             }
+            }
+            provider.unbindAll()
+            provider.bindToLifecycle(this@MainActivity,CameraSelector.DEFAULT_BACK_CAMERA,preview,analyzer)
+           } catch(e:Exception) { scanError=e.localizedMessage ?: "Kamera başlatılamadı." }
+          }
+          cameraProviderFuture.addListener(listener,ContextCompat.getMainExecutor(this@MainActivity))
+          onDispose {
+           if(cameraProviderFuture.isDone) {
+            try { cameraProviderFuture.get().unbindAll() } catch (_:Exception) {}
+           }
+          }
+         }
+         AndroidView(factory={ previewView },modifier=Modifier.fillMaxWidth().height(300.dp))
+         Text("Kamera yazıyı gördükçe sonuç güncellenir. Kaydetmek için taramayı durdurun.",color=Cyan)
+        }
+        Spacer(Modifier.height(10.dp))
         Button(onClick={
          scanError=""
          try {
