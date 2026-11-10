@@ -31,6 +31,29 @@ internal object NoteExport {
   }
  }
 
+ private fun csvCell(value: String): String =
+  "\"" + value.replace("\"", "\"\"") + "\""
+
+ fun shareCsv(activity: Activity, notes: List<Note>) {
+  val dir = File(activity.cacheDir, "exports").apply { mkdirs() }
+  val file = File(dir, "NOTBOOK-AI-kayitlar.csv")
+  val csv = buildString {
+   appendLine("id,baslik,tarih,icerik")
+   notes.forEach { n ->
+    appendLine(listOf(n.id.toString(), n.title, n.timestamp, n.body)
+     .joinToString(",") { csvCell(it) })
+   }
+  }
+  file.writeText("\uFEFF" + csv, Charsets.UTF_8)
+  val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+  val intent = Intent(Intent.ACTION_SEND).apply {
+   type = "text/csv"
+   putExtra(Intent.EXTRA_STREAM, uri)
+   addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+  }
+  activity.startActivity(Intent.createChooser(intent, "CSV paylas"))
+ }
+
  fun shareText(activity: Activity, notes: List<Note>) {
   val intent = Intent(Intent.ACTION_SEND).apply {
    type = "text/plain"
