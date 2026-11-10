@@ -164,13 +164,27 @@ class MainActivity : ComponentActivity() {
    var scanError by remember { mutableStateOf("") }
    var scanning by remember { mutableStateOf(false) }
    var liveScanning by remember { mutableStateOf(false) }
+   val stableLines = remember { mutableStateListOf<String>() }
+   val candidates = remember { mutableStateMapOf<String, Int>() }
+   fun resetLive() { stableLines.clear(); candidates.clear() }
+   fun mergeLive(text: String) {
+    text.lines().map { it.trim() }.filter { it.length >= 4 }.distinct().forEach { line ->
+     val key = line.lowercase(Locale("tr", "TR"))
+     if (stableLines.none { it.equals(line, true) }) {
+      val count = (candidates[key] ?: 0) + 1
+      candidates[key] = count
+      if (count >= 3) stableLines.add(line)
+     }
+    }
+    if (stableLines.isNotEmpty()) scannedText = stableLines.joinToString("\n")
+   }
    var pendingPhotoCapture by remember { mutableStateOf(false) }
    var cameraGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
     cameraGranted = granted
     if (granted) {
      if (pendingPhotoCapture) { pendingPhotoCapture = false; scanError = "Kamera izni verildi. Fotoğraf çekmek için düğmeye tekrar basın." }
-     else liveScanning = true
+     else { resetLive(); scannedText = ""; liveScanning = true }
     } else { pendingPhotoCapture = false; scanError = "Kamera izni reddedildi. Ayarlar > Uygulamalar > NOTBOOK AI > İzinler bölümünden izin verin." }
    }
    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
@@ -357,7 +371,7 @@ class MainActivity : ComponentActivity() {
         Text("Kamera yalnızca siz başlattığınızda açılır. Metin kaydedilmeden önce düzenlenebilir.",color=Ink,modifier=Modifier.padding(vertical=12.dp))
         Button(onClick={
          if (liveScanning) liveScanning = false
-         else if (cameraGranted) { scanError = ""; scannedText = ""; liveScanning = true }
+         else if (cameraGranted) { scanError = ""; scannedText = ""; resetLive(); liveScanning = true }
          else permissionLauncher.launch(Manifest.permission.CAMERA)
         },modifier=Modifier.fillMaxWidth()) { Text(if(liveScanning) "CANLI TARAMAYI DURDUR" else "CANLI KAMERAYLA TARA") }
         if (liveScanning && cameraGranted) {
@@ -378,7 +392,7 @@ class MainActivity : ComponentActivity() {
               recognizer.process(image)
                .addOnSuccessListener { result ->
                 if (result.text.isNotBlank() && liveScanning) {
-                 scannedText = result.text.trim()
+                 mergeLive(result.text)
                  scanError = documentWarnings(scannedText)
                 }
                }
