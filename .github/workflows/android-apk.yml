@@ -14,14 +14,43 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK using runner Android SDK
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
-      - uses: actions/upload-artifact@v4
+      - name: Build debug APK and capture errors
+        id: apk
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:assembleDebug --console=plain --stacktrace 2>&1 | tee build.log
+      - name: Show build error in workflow summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## NOTBOOK AI - Android APK build report'
+            echo "Build result: ${{ steps.apk.outcome }}"
+            echo ''
+            echo '### Error lines'
+            echo '~~~text'
+            grep -n -E -A 9 '(^FAILURE:|^\* What went wrong:|^e: |^ERROR:|^> Task .* FAILED|AAPT: error:|Unresolved reference|Compilation error|Could not resolve|Execution failed)' build.log | tail -n 110 || true
+            echo '~~~'
+            echo '### Last 65 log lines'
+            echo '~~~text'
+            tail -n 65 build.log || true
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOTBOOK-AI-build-log
+          path: build.log
+          if-no-files-found: warn
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
           name: NOTBOOK-AI-debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
