@@ -125,12 +125,32 @@ class MainActivity : ComponentActivity() {
    var scannedText by remember { mutableStateOf("") }
    var scanError by remember { mutableStateOf("") }
    var scanning by remember { mutableStateOf(false) }
+   var accessToken by remember { mutableStateOf("") }
+   var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+   var aiAnswer by remember { mutableStateOf("") }
+   var aiBusy by remember { mutableStateOf(false) }
+   var aiError by remember { mutableStateOf("") }
+   var consent by remember { mutableStateOf(false) }
+   val uiHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+   fun runRemote(task: () -> String, onSuccess: (String) -> Unit) {
+    aiBusy = true
+    aiError = ""
+    Thread {
+     try {
+      val result = task()
+      uiHandler.post { onSuccess(result); aiBusy = false }
+     } catch(e: Exception) {
+      uiHandler.post { aiError = e.localizedMessage ?: "Bağlantı başarısız"; aiBusy = false }
+     }
+    }.start()
+   }
    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
    var photoUri by remember { mutableStateOf<Uri?>(null) }
    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
     val uri = photoUri
     if(!success || uri==null) { scanError="Fotoğraf çekimi iptal edildi.";scanning=false }
     else {
+     selectedImageUri = uri
      scanning=true
      try {
       val input = InputImage.fromFilePath(this@MainActivity, uri)
@@ -174,6 +194,7 @@ class MainActivity : ComponentActivity() {
    }
    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
     if (uri != null) {
+     selectedImageUri = uri
      scanning = true
      scanError = ""
      try {
@@ -313,14 +334,22 @@ class MainActivity : ComponentActivity() {
         OutlinedButton(onClick={ NoteExport.shareText(this@MainActivity, exportNotes) }, enabled=exportNotes.isNotEmpty(), modifier=Modifier.fillMaxWidth()) { Text("METIN OLARAK PAYLAS") }
        }
        "AI'ya Sor" -> {
-        Text("Akıllı hafızada arama",color=Cyan)
-        OutlinedTextField(search,{search=it},label={Text("Notlarınızda ne arıyorsunuz?")},modifier=Modifier.fillMaxWidth())
-        notes.filter { search.isNotBlank() && (it.title.contains(search,true)||it.body.contains(search,true)) }.forEach { n ->
-         Card(Modifier.fillMaxWidth().padding(top=10.dp).clickable { page="Not Defterim";title=n.title;body=n.body;editId=n.id }) {
-          Column(Modifier.padding(12.dp)) { Text(n.title);Text(n.body,maxLines=3) }
-         }
+        Text("Gemini ile hafızama sor",color=Cyan)
+        OutlinedTextField(search,{search=it},label={Text("Sorunuzu yazın")},modifier=Modifier.fillMaxWidth())
+        Text("En fazla 15 kayıt Gemini'ye gönderilir. Hassas bilgileri göndermeden önce kontrol edin.",color=Ink,fontSize=12.sp)
+        Row(verticalAlignment=Alignment.CenterVertically) {
+         Checkbox(checked=consent,onCheckedChange={consent=it})
+         Text("Seçilen kayıtların Gemini'ye gönderilmesine izin veriyorum",fontSize=12.sp)
         }
-        Text("Bu sürümde yerel metin araması çalışır; yapay zekâ sohbeti henüz eklenmedi.",color=Color.LightGray,modifier=Modifier.padding(top=16.dp))
+        Button(onClick={
+         val question=search.trim()
+         val chosen=notes.filter { it.title.contains(question,true)||it.body.contains(question,true) }.take(15)
+         runRemote({GeminiClient.ask(question,chosen,accessToken)}) { aiAnswer=it }
+        },enabled=search.isNotBlank() && consent && accessToken.isNotBlank() && !aiBusy,modifier=Modifier.fillMaxWidth()) { Text("GEMINI'YE SOR") }
+        if(aiBusy) CircularProgressIndicator()
+        if(aiError.isNotBlank()) Text(aiError,color=Color(0xFFFF9CA5))
+        if(aiAnswer.isNotBlank()) Text(aiAnswer,color=Ink,modifier=Modifier.padding(top=12.dp))
+        if(accessToken.isBlank()) Text("Önce Ayarlar bölümüne erişim anahtarını girin.",color=Cyan)
        }
        "Kamerayla Tara" -> {
         Text("Kağıt, fiş veya A4 belgesini okutun",color=Cyan,fontSize=18.sp)
@@ -335,6 +364,22 @@ class MainActivity : ComponentActivity() {
          } catch(e:Exception) { scanError=e.localizedMessage ?: "Kamera açılamadı." }
         },modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
         OutlinedButton(onClick={ galleryLauncher.launch("image/*") }, modifier=Modifier.fillMaxWidth()) { Text("GALERIDEN RESIM TARA") }
+        Row(verticalAlignment=Alignment.CenterVertically) {
+         Checkbox(checked=consent,onCheckedChange={consent=it})
+         Text("Seçtiğim fotoğrafı Gemini'ye göndermeye izin veriyorum",fontSize=12.sp)
+        }
+        OutlinedButton(onClick={
+         selectedImageUri?.let { uri ->
+          runRemote({ GeminiClient.scan(this@MainActivity,uri,accessToken) }) {
+           scannedText=it
+           scanError=documentWarnings(it)
+          }
+         }
+        },enabled=selectedImageUri!=null && accessToken.isNotBlank() && consent && !aiBusy,modifier=Modifier.fillMaxWidth()) {
+         Text("GEMINI ILE YENIDEN OKU")
+        }
+        if(aiBusy) CircularProgressIndicator()
+        if(aiError.isNotBlank()) Text(aiError,color=Color(0xFFFF9CA5))
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
         if(scannedText.isNotBlank()) {
@@ -351,6 +396,12 @@ class MainActivity : ComponentActivity() {
        "Ayarlar" -> {
         Text("NOTBOOK AI v0.12 • OCR doğrulama uyarıları",color=Cyan)
         Text("Notlar bu cihazda yerel olarak saklanır. Henüz şifrelenmez.",color=Ink,modifier=Modifier.padding(top=12.dp))
+        Spacer(Modifier.height(16.dp))
+        Text("Gemini sunucusu: notbook-ai.vercel.app",color=Cyan)
+        Text("NOTEBOOK_API_TOKEN değerini yalnızca kendi telefonunuzda girin. Uygulama kapanınca silinir; GitHub'a veya APK'ya kaydedilmez.",color=Ink,fontSize=12.sp)
+        OutlinedTextField(accessToken,{accessToken=it},label={Text("Sunucu erişim anahtarı")},visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+        TextButton(onClick={accessToken=""}) { Text("Erişim anahtarını temizle") }
+
        }
       }
       Spacer(Modifier.height(24.dp))
