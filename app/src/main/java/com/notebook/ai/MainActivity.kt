@@ -164,10 +164,14 @@ class MainActivity : ComponentActivity() {
    var scanError by remember { mutableStateOf("") }
    var scanning by remember { mutableStateOf(false) }
    var liveScanning by remember { mutableStateOf(false) }
+   var pendingPhotoCapture by remember { mutableStateOf(false) }
    var cameraGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
     cameraGranted = granted
-    if (granted) liveScanning = true else scanError = "Canlı tarama için kamera izni gerekli."
+    if (granted) {
+     if (pendingPhotoCapture) { pendingPhotoCapture = false; scanError = "Kamera izni verildi. Fotoğraf çekmek için düğmeye tekrar basın." }
+     else liveScanning = true
+    } else { pendingPhotoCapture = false; scanError = "Kamera izni reddedildi. Ayarlar > Uygulamalar > NOTBOOK AI > İzinler bölümünden izin verin." }
    }
    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
    var photoUri by remember { mutableStateOf<Uri?>(null) }
@@ -400,11 +404,16 @@ class MainActivity : ComponentActivity() {
            }
           }
          }
-         AndroidView(factory={ previewView },modifier=Modifier.fillMaxWidth().height(300.dp))
-         Text("Kamera yazıyı gördükçe sonuç güncellenir. Kaydetmek için taramayı durdurun.",color=Cyan)
+         AndroidView(factory={ previewView },modifier=Modifier.fillMaxWidth().height(220.dp))
+         Text("Canlı okuma açık. Metin aşağıda anında görünür; bitirince taramayı durdurun.",color=Cyan)
+        }
+        if(scannedText.isNotBlank()) {
+         Text("OKUNAN METİN",color=Cyan,modifier=Modifier.padding(top=10.dp))
+         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().height(155.dp),label={Text("Düzenlenebilir sonuç")})
         }
         Spacer(Modifier.height(10.dp))
         Button(onClick={
+         if (!cameraGranted) { pendingPhotoCapture = true; permissionLauncher.launch(Manifest.permission.CAMERA); return@Button }
          scanError=""
          try {
           val dir=File(cacheDir,"captures").apply { mkdirs() }
@@ -420,11 +429,7 @@ class MainActivity : ComponentActivity() {
         },modifier=Modifier.fillMaxWidth()) { Text("GALERİDEN RESİM TARA") }
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
-        if(scannedText.isNotBlank()) {
-         Text("Tarama sonucu — tarih, saat ve tartım rakamlarını kontrol edin",color=Cyan,modifier=Modifier.padding(top=16.dp))
-         OutlinedTextField(scannedText,{scannedText=it},modifier=Modifier.fillMaxWidth().height(260.dp),label={Text("Okunan metin")})
-         TextButton(onClick={scannedText=""}) { Text("Vazgeç") }
-        }
+        if(scannedText.isNotBlank()) TextButton(onClick={scannedText=""}) { Text("Metni temizle") }
        }
        "Ekranı Tara","Harcamalar" -> {
         Text("Bu bölümün tasarımı hazır.",color=Cyan,fontSize=19.sp)
