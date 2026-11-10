@@ -90,14 +90,23 @@ internal object NoteExport {
   fun wrap(value: String) {
    if (value.isEmpty()) { line(""); return }
    var current = ""
-   value.split(Regex("\\s+")).forEach { word ->
-    val candidate = if(current.isEmpty()) word else "$current $word"
-    if (paint.measureText(candidate) > right-left && current.isNotEmpty()) {
-     line(current)
-     current = word
-    } else current = candidate
+   for (word in value.split(Regex("\\s+"))) {
+    val candidate = if (current.isEmpty()) word else "$current $word"
+    if (paint.measureText(candidate) <= right-left) {
+     current = candidate
+     continue
+    }
+    if (current.isNotEmpty()) { line(current); current = "" }
+    for (ch in word) {
+     val next = current + ch
+     if (paint.measureText(next) > right-left && current.isNotEmpty()) {
+      line(current)
+      current = ""
+     }
+     current += ch
+    }
    }
-   if(current.isNotEmpty()) line(current)
+   if (current.isNotEmpty()) line(current)
   }
   try {
    paint.isFakeBoldText = true
