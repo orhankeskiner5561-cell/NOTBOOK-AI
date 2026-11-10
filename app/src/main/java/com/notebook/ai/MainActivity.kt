@@ -154,6 +154,30 @@ class MainActivity : ComponentActivity() {
    var scanning by remember { mutableStateOf(false) }
    val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
    var photoUri by remember { mutableStateOf<Uri?>(null) }
+   val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    if (uri == null) {
+     scanError = "Galeriden görsel seçilmedi."
+    } else {
+     scanning = true
+     scanError = ""
+     scannedText = ""
+     try {
+      recognizer.process(InputImage.fromFilePath(this@MainActivity, uri))
+       .addOnSuccessListener { result ->
+        scannedText = result.text.trim()
+        scanError = if (scannedText.isBlank()) "Görselde okunabilir yazı bulunamadı." else documentWarnings(scannedText)
+        scanning = false
+       }
+       .addOnFailureListener { e ->
+        scanError = e.localizedMessage ?: "Galeri görseli okunamadı."
+        scanning = false
+       }
+     } catch (e: Exception) {
+      scanError = e.localizedMessage ?: "Görsel açılamadı."
+      scanning = false
+     }
+    }
+   }
    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
     val uri = photoUri
     if(!success || uri==null) { scanError="Fotoğraf çekimi iptal edildi.";scanning=false }
@@ -326,6 +350,11 @@ class MainActivity : ComponentActivity() {
           cameraLauncher.launch(photoUri!!)
          } catch(e:Exception) { scanError=e.localizedMessage ?: "Kamera açılamadı." }
         },modifier=Modifier.fillMaxWidth()) { Text("KAMERAYI AÇ VE TARA") }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(onClick={
+         scanError = ""
+         galleryLauncher.launch("image/*")
+        },modifier=Modifier.fillMaxWidth()) { Text("GALERİDEN RESİM TARA") }
         if(scanning) { CircularProgressIndicator();Text("Metin okunuyor…") }
         if(scanError.isNotBlank()) Text(scanError,color=Color(0xFFFF9CA5))
         if(scannedText.isNotBlank()) {
