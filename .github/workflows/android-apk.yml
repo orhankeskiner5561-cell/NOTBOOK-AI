@@ -2,7 +2,7 @@ name: Build NOTBOOK AI APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, gemini-v0.8-test]
+    branches: [main, gemini-v0.8-test, gemini-v0.9-camera-fix]
 jobs:
   build:
     runs-on: ubuntu-latest
