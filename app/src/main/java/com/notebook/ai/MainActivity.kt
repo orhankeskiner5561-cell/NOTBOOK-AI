@@ -2,6 +2,12 @@ package com.notebook.ai
 
 import android.os.Bundle
 import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.ImageDecoder
 import java.io.File
 import androidx.core.content.FileProvider
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,6 +45,28 @@ private val Purple = Color(0xFF873BF5)
 private val Cyan = Color(0xFF39D5E5)
 private val Ink = Color.White
 private val Gradient = Brush.horizontalGradient(listOf(Color(0xFF076B83), Color(0xFF5427A0)))
+
+private fun enhanceDocument(source: Bitmap): Bitmap {
+ val scale = minOf(2.0f, 2400f / maxOf(source.width, source.height).toFloat())
+ val width = (source.width * scale).toInt().coerceAtLeast(1)
+ val height = (source.height * scale).toInt().coerceAtLeast(1)
+ val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+ val matrix = ColorMatrix().apply { setSaturation(0f) }
+ val contrast = 1.65f
+ val offset = -75f
+ val contrastMatrix = ColorMatrix(floatArrayOf(
+  contrast,0f,0f,0f,offset,
+  0f,contrast,0f,0f,offset,
+  0f,0f,contrast,0f,offset,
+  0f,0f,0f,1f,0f
+ ))
+ matrix.postConcat(contrastMatrix)
+ val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+  colorFilter = ColorMatrixColorFilter(matrix)
+ }
+ Canvas(output).drawBitmap(source, null, android.graphics.Rect(0,0,width,height), paint)
+ return output
+}
 
 data class Note(val id: Long, val title: String, val body: String, val timestamp: String)
 
@@ -79,10 +107,37 @@ class MainActivity : ComponentActivity() {
      try {
       val input = InputImage.fromFilePath(this@MainActivity, uri)
       recognizer.process(input)
-       .addOnSuccessListener { result ->
-        scannedText=result.text
-        scanError=if(result.text.isBlank()) "Metin bulunamadı. Sayfayı daha yakın ve aydınlık çekin." else ""
-        scanning=false
+       .addOnSuccessListener { first ->
+        val originalText = first.text.trim()
+        try {
+         val decoded = ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, _, _ ->
+          decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+         }
+         val enhanced = enhanceDocument(decoded)
+         recognizer.process(InputImage.fromBitmap(enhanced, 0))
+          .addOnSuccessListener { second ->
+           val enhancedText = second.text.trim()
+           // Never silently replace the original OCR result with guessed numeric values.
+           scannedText = when {
+            originalText.isBlank() -> enhancedText
+            enhancedText.isBlank() || enhancedText == originalText -> originalText
+            else -> originalText + "\\n\\n--- KONTRASTLI İKİNCİ OKUMA (KONTROL EDİN) ---\\n" + enhancedText
+           }
+           scanError = if(scannedText.isBlank()) "Metin bulunamadı. Belgeyi yakından ve aydınlıkta çekin." else ""
+           scanning = false
+           enhanced.recycle()
+          }
+          .addOnFailureListener { e ->
+           scannedText = originalText
+           scanError = if(originalText.isBlank()) (e.localizedMessage ?: "Metin okunamadı.") else "İkinci okuma başarısız; ilk sonuç gösteriliyor."
+           scanning = false
+           enhanced.recycle()
+          }
+        } catch(e:Exception) {
+         scannedText = originalText
+         scanError = if(originalText.isBlank()) (e.localizedMessage ?: "Fotoğraf işlenemedi.") else "Görüntü iyileştirme uygulanamadı; ilk sonuç gösteriliyor."
+         scanning = false
+        }
        }
        .addOnFailureListener { e -> scanError=e.localizedMessage ?: "Okuma başarısız.";scanning=false }
      } catch(e:Exception) { scanError=e.localizedMessage ?: "Fotoğraf açılamadı.";scanning=false }
