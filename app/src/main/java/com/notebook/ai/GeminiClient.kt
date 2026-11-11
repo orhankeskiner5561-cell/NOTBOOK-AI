@@ -38,10 +38,17 @@ internal object GeminiClient {
    conn.readTimeout=30000
    conn.doOutput=true
    conn.setRequestProperty("Content-Type","application/json")
-   conn.setRequestProperty("Authorization","Bearer $token")
+   conn.setRequestProperty("Authorization","Bearer ${token.trim()}")
    conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
    if (conn.responseCode !in 200..299) {
-    throw IllegalStateException("Sunucu yanıtı: HTTP ${conn.responseCode}. Anahtarı ve Gemini kotasını kontrol edin.")
+    val status = conn.responseCode
+    val message = when (status) {
+     401 -> "HTTP 401: Sunucu erişim anahtarı eşleşmiyor. Ayarlar'a Gemini API anahtarını veya hesap şifrenizi değil, Vercel'deki NOTEBOOK_API_TOKEN değişkeninin DEĞERİNİ girin. Token değiştiyse Vercel'de yeniden dağıtım yapın."
+     503 -> "HTTP 503: Vercel ortam değişkenleri eksik. GEMINI_API_KEY ve NOTEBOOK_API_TOKEN ayarlarını kontrol edin."
+     502 -> "HTTP 502: Gemini servisi veya API anahtarında sorun var."
+     else -> "Sunucu yanıtı: HTTP $status."
+    }
+    throw IllegalStateException(message)
    }
    return JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
   } finally { conn.disconnect() }
